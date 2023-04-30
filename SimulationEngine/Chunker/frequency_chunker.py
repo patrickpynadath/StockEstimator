@@ -3,6 +3,8 @@ import pandas as pd
 from sklearn.cluster import SpectralClustering
 from sklearn.decomposition import PCA
 from Utils import get_market_corr
+from tqdm import tqdm
+import datetime as dt
 
 # for now, just going to return all the data for both fundamental and equity prices
 from Utils import get_fft_data
@@ -16,7 +18,7 @@ def get_etf_chunks(ret_data,
                    corr_data,
                    chunk_size,
                    max_freq,
-                   overlap_ratio=.5):
+                   overlap_ratio=.75):
     chunked_data = []
     cur_start_idx = 0
     dates = get_min_daterange(corr_data)
@@ -41,7 +43,7 @@ def get_etf_chunks(ret_data,
         cur_chunk_ret = pd.concat(cur_chunk_ret)
         cur_chunk = pd.concat({'CorrData':cur_chunk_corr, 'RetData':cur_chunk_ret}, axis=1)
         chunked_data.append(cur_chunk)
-        cur_start_idx += 1 #getting all consecutive chunks of length chunk_size
+        cur_start_idx += int((1-overlap_ratio) * chunk_size)
     return date_ranges, chunked_data
 
 
@@ -136,10 +138,12 @@ class FreqChunker:
     def create_chunks(self):
         date_ranges, res = create_chunked_data(self.start_date, self.end_date, self.max_res_ratio, self.chunk_size, self.overlap_ratio, self.max_frequency)
         chunked = chunk_frequency_data(res)
-        dist_matrix = construct_distance_matrix(chunked)
+        unique_dist, dist_matrix = construct_distance_matrix(chunked)
         spec_cluster = SpectralClustering(affinity='precomputed_nearest_neighbors', n_clusters=self.n_regime)
         labels = spec_cluster.fit_predict(dist_matrix)
-        sampled_chunks = pd.DataFrame(labels).reset_index().groupby(0).apply(lambda x : x.sample(n=self.n_per_regime))['index'].values
+        grouped = pd.DataFrame(labels).reset_index().groupby(0)
+        n_per_regime = self.n_per_regime
+        sampled_chunks = grouped.apply(lambda x : x.sample(n= min(n_per_regime, len(x))))['index'].values
         return [date_ranges[i] for i in sampled_chunks]
         # how many chunks should I get?
 
@@ -155,7 +159,7 @@ def create_chunked_data(start_date, end_date, max_res_ratio, chunk_size, overlap
     etf_table = smooth_target_col(etf_table, max_res_ratio=max_res_ratio, target_col='low', name='smooth_prices')
     etf_table = calc_pct_change_mux(etf_table, 'smooth_prices', 'smooth_returns')
     corr_data = get_market_corr(etf_table)
-    date_ranges, res = get_etf_chunks(etf_table, corr_data, chunk_size, max_frequency,
+    date_ranges, res = get_etf_chunks(etf_table['smooth_returns'], corr_data, chunk_size, max_frequency,
                                       overlap_ratio=overlap_ratio)
     return date_ranges, res
 
@@ -165,11 +169,11 @@ def chunk_frequency_data(res):
     for i, ch in enumerate(res):
         cur_chunk = []
         corr = ch['CorrData'].dropna()
-        freq_corr = [get_highest_freq(corr[i].loc[t]) for t in ETF_TICKERS if t != 'SPY']
+        freq_corr = [get_highest_freq(corr.loc[t]) for t in ETF_TICKERS if t != 'SPY']
         freq_corr = pd.concat(freq_corr, ignore_index=True)
 
         ret = ch['RetData'].dropna()
-        freq_ret = [get_highest_freq(ret[i].loc[t]) for t in ETF_TICKERS]
+        freq_ret = [get_highest_freq(ret.loc[t]) for t in ETF_TICKERS]
         freq_ret = pd.concat(freq_ret)
         cur_chunk = {'CorrData':freq_corr, 'RetData':freq_ret}
         freq_data.append(cur_chunk)
@@ -180,8 +184,8 @@ def construct_distance_matrix(chunked_frequency_rankings):
     unique_dist = []
     total_length = len(chunked_frequency_rankings)
     dist_matrix = np.zeros((total_length, total_length))
-    for i in range(chunked_frequency_rankings):
-        for j in range(i, chunked_frequency_rankings):
+    for i in range(total_length):
+        for j in range(i, total_length):
             if i != j:
                 if i < j:
                     corr_dist = fft_distance_measure(chunked_frequency_rankings[i]['CorrData'], chunked_frequency_rankings[j]['CorrData'])
@@ -191,6 +195,18 @@ def construct_distance_matrix(chunked_frequency_rankings):
                     dist_matrix[j, i] = ret_data
                     unique_dist.append(total_dist)
     return unique_dist, dist_matrix
+
+
+# def get_cur_freq_data(chunk_size, chunked_frequency_rankings):
+#     end_date = dt.date.today()
+#     start_date = end_date - dt.timedelta(days=chunk_size)
+#     etf_table = get_price_data(tickers=ETF_TICKERS, start_date=start_date, end_date=end_date, table='SFP').iloc[-chunk_size//2:]
+#     etf_table = smooth_target_col(etf_table, target_col='low', name='smooth_prices')
+#     etf_table = calc_pct_change_mux(etf_table, 'smooth_prices', 'smooth_returns')
+#     corr_data = get_market_corr(etf_table)
+#     for t in ETF_TICKERS:
+
+
 
 
 

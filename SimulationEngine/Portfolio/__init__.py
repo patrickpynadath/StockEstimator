@@ -1,1 +1,1 @@
-from BasicPortfolio import BasicPortfolio
+from .BasicPortfolio import BasicPortfolio

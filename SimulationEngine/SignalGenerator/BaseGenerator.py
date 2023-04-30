@@ -1,4 +1,4 @@
-class BaseGenerator:
+class Generator:
     def __init__(self, SEP_tickers, SFP_tickers, FundColumns):
         self.sep = SEP_tickers
         self.sfp = SFP_tickers

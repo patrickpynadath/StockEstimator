@@ -1,10 +1,11 @@
 # base class to be implemented
 # later will add some cool stuff, this is just to finish everything else up
 class Actor:
-    def __init__(self, sfp_tickers, sep_tickers, need_all_prev=False):
+    def __init__(self, sfp_tickers, sep_tickers, name, need_all_prev=False):
         self.sep_tickers = sep_tickers
         self.sfp_tickers = sfp_tickers
         self.need_all_prev = need_all_prev
+        self.name = name
         pass
 
     # what functions would need to be implemented
